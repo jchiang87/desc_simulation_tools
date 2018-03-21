@@ -3,11 +3,24 @@
 Script to make sky flats from eimage and calexp data.
 """
 import sys
+import argparse
 import lsst.afw.math as afw_math
 import lsst.daf.persistence as dp
 
+def get_stats_control(exposure, exclude=('EDGE',)):
+    """
+    Create a StatisticsControl object and set all of the mask bits
+    in the exposure, except the excluded ones.
+    """
+    stats_ctrl = afw_math.StatisticsControl()
+    mpd = exposure.getMask().getMaskPlaneDict()
+    # Turn on all of the mask bits except the excluded ones.
+    bits = 2**len(mpd) - 1 - sum([2**mpd[mask_id] for mask_id in exclude])
+    stats_ctrl.setAndMask(bits)
+    return stats_ctrl
+
 def make_sky_flat(butler, dataId, sky_flat_stat=afw_math.MEANCLIP,
-                  med_range=None, nframes=None):
+                  nframes=None):
     """
     Make a sky flat from eimages, appylying the calexp masks to avoid
     including counts from detected sources, cosmic rays, and other
@@ -42,32 +55,37 @@ def make_sky_flat(butler, dataId, sky_flat_stat=afw_math.MEANCLIP,
 
     # Compile a list of eimages to include in the sky flat.
     images = []
+    medians = []
+    stats_ctrl = None
     for i, dataref in enumerate(datarefs[:nframes]):
-        print(i, nframes)
-        sys.stdout.flush()
+        sys.stdout.write("%s  %s  " % (i, nframes))
         eimage = butler.get('eimage', dataref.dataId)
-        # Compute the eimage median for downselection.
-        image_median = afw_math.makeStatistics(eimage.getImage(),
-                                               afw_math.MEDIAN).getValue()
-        if med_range is not None and med_range[0] < image_median < med_range[1]:
-            # Add the calexp mask to eimage exposures so that sources
-            # and other features can be masked.
-            try:
-                eimage.setMask(dataref.get().getMask())
-                images.append(eimage.getMaskedImage())
-            except dp.NoResults:
-                # Handle NoResults error from the butler.
-                pass
-
-    # Set all of the mask bits via a StatisticsControl
-    # object, excluding the edge rolloff mask.
-    stat_ctrl = afw_math.StatisticsControl()
-    mpd = images[0].getMask().getMaskPlaneDict()
-    bits = 2**len(mpd) - 1 - 2**mpd['EDGE']
-    stat_ctrl.setAndMask(bits)
+        try:
+            # Add the calexp mask to the eimage exposure so that
+            # sources and other non-background features can be masked.
+            eimage.setMask(dataref.get().getMask())
+            mi = eimage.getMaskedImage()
+            # Subtract the image median so that unmasked areas do not
+            # introduce structure in the final stacked image.
+            if stats_ctrl is None:
+                stats_ctrl = get_stats_control(eimage)
+            image_median = afw_math.makeStatistics(mi, afw_math.MEDIAN,
+                                                   stats_ctrl).getValue()
+            mi -= image_median
+            images.append(mi)
+            medians.append(image_median)
+            sys.stdout.write("%s" % image_median)
+        except dp.NoResults as eobj:
+            # NoResults error from the butler.  Skip this exposure, but
+            # print a message reporting the error.
+            print(dataref.dataId, eobj)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
 
     # Make the sky flat.
-    sky_flat = afw_math.statisticsStack(images, sky_flat_stat, stat_ctrl)
+    sky_flat = afw_math.statisticsStack(images, sky_flat_stat, stats_ctrl)
+    # Add back in the sky_flat_stat estimate of the median values.
+    sky_flat += afw_math.makeStatistics(medians, sky_flat_stat).getValue()
 
     # Check stacked image statistics.
     stats = afw_math.makeStatistics(sky_flat,
@@ -86,10 +104,24 @@ if __name__ == '__main__':
     lsst.log.setLevel(lsst.log.getDefaultLoggerName(), lsst.log.ERROR)
     plt.ion()
 
-    repo = '/global/projecta/projectdirs/lsst/production/DC1/DM/DC1-imsim-dithered'
-    dataId = dict(raft='2,2', sensor='1,1', filter='r')
-    #dataId = dict(raft='0,3', sensor='0,2', filter='r')
-    butler = dp.Butler(repo)
+    parser = argparse.ArgumentParser(description="Application to produce a sky flat from eimage and calexp data.")
+    parser.add_argument('repo', type=str, help='Stack data repo')
+    parser.add_argument('--raft', type=str, help='raft id, e.g., "2,2"')
+    parser.add_argument('--sensor', type=str, help='sensor id, e.g., "1,1"')
+    parser.add_argument('--filter', type=str, help='filter, e.g., r')
+    parser.add_argument('--outfile', type=str, default=None,
+                        help='output FITS filename [sky_flat_fb_Rxx_Sxx.fits]')
+    parser.add_argument('--nframes', type=int, default=None,
+                        help='maximum number of frames to process')
+    args = parser.parse_args()
 
-    sky_flat = make_sky_flat(butler, dataId, med_range=(300, 500))
-    sky_flat.writeFits('sky_flat_R22_S11.fits')
+    butler = dp.Butler(args.repo)
+    dataId = dict(raft=args.raft, sensor=args.sensor, filter=args.filter)
+
+    sky_flat = make_sky_flat(butler, dataId, nframes=args.nframes)
+
+    outfile = args.outfile
+    if outfile is None:
+        outfile = 'sky_flat_f%s_R%s_S%s.fits' % (args.filter, args.raft[::2],
+                                                 args.sensor[::2])
+    sky_flat.writeFits(outfile)
