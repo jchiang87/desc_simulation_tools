@@ -65,16 +65,15 @@ def make_sky_flat(butler, dataId, sky_flat_stat=afw_math.MEANCLIP,
             # sources and other non-background features can be masked.
             eimage.setMask(dataref.get().getMask())
             mi = eimage.getMaskedImage()
-            # Subtract the image median so that unmasked areas do not
-            # introduce structure in the final stacked image.
             if stats_ctrl is None:
                 stats_ctrl = get_stats_control(eimage)
-            image_median = afw_math.makeStatistics(mi, afw_math.MEDIAN,
-                                                   stats_ctrl).getValue()
-            mi -= image_median
+            # Compute statistics on each image.
+            stats = afw_math.makeStatistics(mi, afw_math.MEDIAN | afw_math.VARIANCECLIP, stats_ctrl)
+            image_median = stats.getValue(afw_math.MEDIAN)
+            image_variance = stats.getValue(afw_math.VARIANCECLIP)
             images.append(mi)
             medians.append(image_median)
-            sys.stdout.write("%s" % image_median)
+            sys.stdout.write("%s  %s" % (image_median, image_variance))
         except dp.NoResults as eobj:
             # NoResults error from the butler.  Skip this exposure, but
             # print a message reporting the error.
@@ -82,10 +81,27 @@ def make_sky_flat(butler, dataId, sky_flat_stat=afw_math.MEANCLIP,
         sys.stdout.write("\n")
         sys.stdout.flush()
 
-    # Make the sky flat.
+    # Subtract the image medians so that unmasked areas do not
+    # introduce structure in the final stacked image, and scale the
+    # range of pixel values to a common normalization so that
+    # vignetting can be adequately captured given a range of sky
+    # levels.
+    median_sky_level \
+        = afw_math.makeStatistics(medians, afw_math.MEDIAN).getValue()
+    for median, mi in zip(medians, images):
+        mi -= median
+        mi *= median_sky_level/median
+
+    # Make the sky flat from the zeroed and scaled images
     sky_flat = afw_math.statisticsStack(images, sky_flat_stat, stats_ctrl)
-    # Add back in the sky_flat_stat estimate of the median values.
-    sky_flat += afw_math.makeStatistics(medians, sky_flat_stat).getValue()
+
+    # Compute the stacked sky level by applying the same estimator to the
+    # list of image medians.
+    sky_level = afw_math.makeStatistics(medians, sky_flat_stat).getValue()
+
+    # Unscale and de-zero the sky flat image.
+    sky_flat /= median_sky_level/sky_level
+    sky_flat += sky_level
 
     # Check stacked image statistics.
     stats = afw_math.makeStatistics(sky_flat,
