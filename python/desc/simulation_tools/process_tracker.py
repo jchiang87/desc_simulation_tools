@@ -2,11 +2,11 @@ import os
 import psutil
 
 class ProcessTracker:
-    def __init__(self, outfile, pid=None, mode='w'):
+    def __init__(self, output, pid=None, mode='w'):
         if pid is None:
             pid = os.getpid()
         self.process = psutil.Process(pid)
-        self.output = open(outfile, mode)
+        self.output = open(output, mode) if isinstance(output, str) else output
 
     def __del__(self):
         self.output.close()
