@@ -1,15 +1,19 @@
 import os
+import sys
 import psutil
 
 class ProcessTracker:
-    def __init__(self, output, pid=None, mode='w'):
+    def __init__(self, output=None, pid=None, mode='w'):
+        if output is None:
+            output = os.environ.get('PROCESS_INFO_FILE', sys.stdout)
         if pid is None:
             pid = os.getpid()
         self.process = psutil.Process(pid)
         self.output = open(output, mode) if isinstance(output, str) else output
 
     def __del__(self):
-        self.output.close()
+        if self.output != sys.stdout:
+            self.output.close()
 
     def start_timer(self):
         self.tstart = self.process.cpu_times().user

@@ -45,9 +45,10 @@ if __name__ == '__main__':
 
     phosim_root_path = '/global/projecta/projectdirs/lsst/production/DC2'
     stream_paths = glob.glob(os.path.join(phosim_root_path,
-                                          'DC2-phoSim-3_*WFD*'))
+                                          'DC2-R1-2p-WFD*'))
 
-    transfer_area = '/global/projecta/projectdirs/lsst/global/DC2'
+#    transfer_area = '/global/projecta/projectdirs/lsst/global/DC2'
+    transfer_area = '.'
     coords = opsim_db_visit_coords(box_size=6)
     for stream_path in stream_paths:
         print(stream_path)
@@ -69,8 +70,9 @@ if __name__ == '__main__':
                    np.degrees(offsets[index]), num_sensors[index]):
             if icount > 10:
                 break
-            # Require at least half of the sensors in the focal plane.
-            if nsensors > 90:
+            # Require at least half of the sensors in the focal plane
+            # and require the offset to be less than 2 degrees.
+            if nsensors > 90 and offset < 2.:
                 print('%6i  %s  %.2f  %3i' % (obsHistID, stream, offset,
                                               nsensors))
                 icount += 1
