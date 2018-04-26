@@ -113,7 +113,7 @@ if __name__ == '__main__':
     parser.add_argument('--phosim_root_dir', type=str,
                         default='/global/projecta/projectdirs/lsst/production/DC2',
                         help='root directory for DC2 phosim outputs')
-    parser.add_argument('--ref_cat', type=str, default='../ref_cat_Run1.1p.txt',
+    parser.add_argument('--ref_cat', type=str, default=None,
                         help='reference catalog')
 
     args = parser.parse_args()
@@ -125,7 +125,8 @@ if __name__ == '__main__':
     chip_plotter = ChipPlotter(opsimdb_interface.get_obs_md(obsHistID))
 
     plt.figure()
-    plot_ref_cat(args.ref_cat)
+    if args.ref_cat is not None:
+        plot_ref_cat(args.ref_cat)
     plot_Run1_1p_regions()
     opsimdb_interface.plot_fov(obsHistID)
     chip_plotter.plot_chips(phosim_output_dir)
