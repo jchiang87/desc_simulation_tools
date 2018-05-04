@@ -2,6 +2,7 @@ from __future__ import print_function
 import os
 import glob
 import shutil
+import numpy as np
 import pandas as pd
 import lsst.daf.persistence as dp
 
@@ -21,7 +22,7 @@ def create_sql_schema(catalog, outfile, table_name):
     sql_type = {'Angle': 'DOUBLE',
                 'D': 'DOUBLE',
                 'F': 'FLOAT',
-                'Flag': 'BIT',
+                'Flag': 'TINYINT(1)',
                 'I': 'INT',
                 'L': 'BIGINT'}
     with open(outfile, 'w') as output:
@@ -30,10 +31,12 @@ def create_sql_schema(catalog, outfile, table_name):
             output.write("%s %s %s,\n" % (" "*6,
                                           item.field.getName(),
                                           sql_type[item.field.getTypeString()]))
-        output.write("       primary key (id)\n")
+        output.write("       tract INT,\n")
+        output.write("       patch CHAR(2),\n")
+        output.write("       primary key (id, tract, patch)\n")
         output.write("       )\n")
 
-def write_csv_file(catalog, outfile=None):
+def write_csv_file(catalog, tract, patch, outfile=None):
     """
     Write the contents of a SourceCatalog object as a csv file for
     loading into a mysql db table.
@@ -42,8 +45,12 @@ def write_csv_file(catalog, outfile=None):
     ----------
     catalog: lsst.afw.table.source.source.SourceCatalog
         SourceCatalog object returned by the Data Butler.
-    outfile: str
-        Filename of the csv file.
+    tract: int
+        ID of tract.
+    patch: str
+        ID of patch.  This will be slugified, e.g., "0,1" -> "01".
+    outfile: str [None]
+        Filename of the csv file.  If None, then no csv file will be written.
 
     Returns
     -------
@@ -53,8 +60,15 @@ def write_csv_file(catalog, outfile=None):
     df = pd.DataFrame()
     for col in catalog.getSchema():
         name = col.field.getName()
-        df[name] = catalog.get(name)
+        coldata = catalog.get(name)
+        if coldata.dtype == np.bool:
+            df[name] = coldata.astype(int)
+        else:
+            df[name] = coldata
         columns.append(name)
+    columns.extend(['tract', 'patch'])
+    df['tract'] = np.ones(len(df), dtype=np.int)*tract
+    df['patch'] = np.array([patch.replace(',', '')]*len(df))
     if outfile is not None:
         df.to_csv(outfile, index=False, columns=columns)
     return df
@@ -108,9 +122,9 @@ if __name__ == '__main__':
     dataId = dict()
     band = 'merged'
     schema_script = 'coadd_%s_catalog_schema.sql' % band
-    table_name = 'CoaddObject_DC2'
+    table_name = 'CoaddObject_Run1_1p'
 
-    csv_archive = 'csv_archive'
+    csv_archive = 'csv_archive_Run1.1p'
     if not os.path.isdir(csv_archive):
         os.mkdir(csv_archive)
 
@@ -120,7 +134,7 @@ if __name__ == '__main__':
     butler = dp.Butler(repo)
     patch_ids = get_patch_ids(butler)
 
-    nmax = 1
+    nmax = 200
     n = 0
     for tract_id in tract_ids:
         dataId['tract'] = tract_id
@@ -142,7 +156,7 @@ if __name__ == '__main__':
                 create_sql_schema(catalog, schema_script, table_name)
                 conn.run_script(schema_script, dry_run=dry_run)
 
-            df = write_csv_file(catalog, csv_file)
+            df = write_csv_file(catalog, tract_id, patch_id, outfile=csv_file)
 
             print("loading %s" % csv_file)
             if not dry_run:
