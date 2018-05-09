@@ -83,13 +83,17 @@ class PatchSelector:
 repo = '/global/projecta/projectdirs/lsst/global/in2p3/Run1.1-test2/output'
 butler = dp.Butler(repo)
 
-# Pick a tract and patch.
+# Pick filter, tract, and patch.
+filter_ = 'r'
+mag_max = 24.5
 #tract = 4850
 tract = 5063
 patch_index = 4, 4
 patch_id = '{},{}'.format(*patch_index)
-filter_ = 'r'
-mag_max = 24.5
+
+# Create function to down-select galaxy catalog entries to lie within
+# a tract/patch.
+patch_selector = PatchSelector(butler, tract, patch_index)
 
 # Get the DRP catalog for a selected tract and patch
 dataId = dict(tract=tract, patch=patch_id, filter=filter_)
@@ -118,61 +122,66 @@ for record in cat_temp:
     new_rec.set('mag_{}'.format(filter_),
                 calib.getMagnitude(record['modelfit_CModel_flux']))
 
-# Write out DRP galaxy positions for later plotting.
-with open('drp.txt', 'w') as output:
-    for ra, dec in zip(np.degrees(drp_catalog['coord_ra']),
-                       np.degrees(drp_catalog['coord_dec'])):
-        output.write('{}  {}\n'.format(ra, dec))
-
 # Read in the galaxy catalog data.
 with warnings.catch_warnings():
     warnings.filterwarnings('ignore')
     gc = GCRCatalogs.load_catalog('proto-dc2_v2.1.2_test')
 
-patch_selector = PatchSelector(butler, tract, patch_index)
+# Create a SourceCatalog from the gc data, restricting to the
+# tract/patch being considered.
 galaxy_catalog = patch_selector(gc, band=filter_, max_mag=mag_max)
 
-# Write galaxy catalog positions for plotting.
-with open('gc.txt', 'w') as output:
-    for ra, dec in zip(galaxy_catalog['coord_ra'],
-                       galaxy_catalog['coord_dec']):
-        output.write('{}  {}\n'.format(ra, dec))
-
-# Find positional matches within 10 milliarcseconds.
+# Find positional matches within 100 milliarcseconds.
 radius = afw_geom.Angle(0.1, afw_geom.arcseconds)
 matches = afw_table.matchRaDec(drp_catalog, galaxy_catalog, radius)
-
-# Distances in milliarcseconds.
-distances = 3600.*1000.*np.array([np.degrees(x.distance) for x in matches])
 
 # Compare magnitudes for matched objects.
 drp_mag = np.zeros(len(matches), dtype=np.float)
 gc_mag = np.zeros(len(matches), dtype=np.float)
 sep = np.zeros(len(matches), dtype=np.float)
+# Arrays for a quiver plot.
+u = np.zeros(len(matches), dtype=np.float)
+v = np.zeros(len(matches), dtype=np.float)
 for i, match in enumerate(matches):
     drp_mag[i] = match.first['mag_{}'.format(filter_)]
     gc_mag[i] = match.second['mag_{}'.format(filter_)]
     sep[i] = np.degrees(match.distance)*3600.*1000.
+    u[i] = match.first['coord_ra'] - match.second['coord_ra']
+    v[i] = match.first['coord_dec'] - match.second['coord_dec']
 
 title = 'Run1.1p, filter={}, tract={}, patch={}'.format(filter_, tract,
                                                         patch_id)
+plt.rcParams['figure.figsize'] = 8, 8
+fig = plt.figure()
+frame_axes = fig.add_subplot(111, frameon=False)
+frame_axes.set_title(title)
+frame_axes.get_xaxis().set_ticks([])
+frame_axes.get_yaxis().set_ticks([])
+
 # Histogram of match separations.
-plt.figure()
+fig.add_subplot(2, 2, 1)
 plt.hist(sep, range=(0, 100), histtype='step', bins=40)
 plt.xlabel('separation (marcsec)')
 plt.ylabel('entries / bin')
-plt.title(title)
+
+# Plot DRP and galaxy catalog positions on the sky.
+fig.add_subplot(2, 2, 2)
+plt.quiver(np.degrees(drp_catalog['coord_ra']),
+           np.degrees(drp_catalog['coord_dec']),
+           u, v)
+plt.xlabel('RA (deg)')
+plt.ylabel('Dec (deg)')
 
 # Difference in i-band mags vs i_gc.
-plt.figure()
+fig.add_subplot(2, 2, 3)
 plt.errorbar(gc_mag, gc_mag - drp_mag, fmt='.')
 plt.xlabel('{}_gc'.format(filter_))
 plt.ylabel('{0}_gc - {0}_drp'.format(filter_))
-plt.title(title)
 
 # Difference in i-band mags vs separation.
-plt.figure()
+fig.add_subplot(2, 2, 4)
 plt.errorbar(sep, gc_mag - drp_mag, fmt='.')
 plt.xlabel('separation (marcsec)')
 plt.ylabel('{0}_gc - {0}_drp'.format(filter_))
-plt.title(title)
+
+plt.tight_layout()
