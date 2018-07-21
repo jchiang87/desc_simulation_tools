@@ -84,11 +84,12 @@ repo = '/global/projecta/projectdirs/lsst/global/in2p3/Run1.1-test2/output'
 butler = dp.Butler(repo)
 
 # Pick filter, tract, and patch.
-filter_ = 'r'
+filter_ = 'u'
 mag_max = 24.5
 #tract = 4850
-tract = 5063
-patch_index = 4, 4
+#tract = 5063
+tract = 4638
+patch_index = 2, 2
 patch_id = '{},{}'.format(*patch_index)
 
 # Create function to down-select galaxy catalog entries to lie within
@@ -97,7 +98,6 @@ patch_selector = PatchSelector(butler, tract, patch_index)
 
 # Get the DRP catalog for a selected tract and patch
 dataId = dict(tract=tract, patch=patch_id, filter=filter_)
-print(dataId)
 coadd_catalog = butler.get('deepCoadd_meas', dataId=dataId)
 coadd_calexp = butler.get('deepCoadd', dataId=dataId)
 calib = coadd_calexp.getCalib()
@@ -164,7 +164,7 @@ plt.hist(sep, range=(0, 100), histtype='step', bins=40)
 plt.xlabel('separation (marcsec)')
 plt.ylabel('entries / bin')
 
-# Plot DRP and galaxy catalog positions on the sky.
+# Quiver plot of (DRP - galaxy_catalog) positions on the sky.
 fig.add_subplot(2, 2, 2)
 plt.quiver(np.degrees(drp_catalog['coord_ra']),
            np.degrees(drp_catalog['coord_dec']),
@@ -172,13 +172,13 @@ plt.quiver(np.degrees(drp_catalog['coord_ra']),
 plt.xlabel('RA (deg)')
 plt.ylabel('Dec (deg)')
 
-# Difference in i-band mags vs i_gc.
+# Difference in magnitudes vs mag_gc.
 fig.add_subplot(2, 2, 3)
 plt.errorbar(gc_mag, gc_mag - drp_mag, fmt='.')
 plt.xlabel('{}_gc'.format(filter_))
 plt.ylabel('{0}_gc - {0}_drp'.format(filter_))
 
-# Difference in i-band mags vs separation.
+# Difference in magnitudes vs separation.
 fig.add_subplot(2, 2, 4)
 plt.errorbar(sep, gc_mag - drp_mag, fmt='.')
 plt.xlabel('separation (marcsec)')
