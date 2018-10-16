@@ -42,21 +42,20 @@ if __name__ == '__main__':
     if not os.path.isdir(args.outdir):
         os.makedirs(args.outdir)
 
-    processes = 4
-
-    pool = multiprocessing.Pool(processes=processes)
-    results = []
     write_amp_file = WriteAmpFile(opsim_db=opsim_db)
-    for item in args.eimage_files:
-        outfile = write_amp_file.outfile(item, args.outdir)
-        if os.path.isfile(outfile):
-            continue
-        print("processing", os.path.basename(item))
-        sys.stdout.flush()
-        results.append(pool.apply_async(write_amp_file, (item,),
-                                        dict(outdir=args.outdir)))
+    results = []
+    with multiprocessing.Pool(processes=args.processes, maxtasksperchild=1) \
+         as pool:
+        for item in args.eimage_files:
+            outfile = write_amp_file.outfile(item, args.outdir)
+            if os.path.isfile(outfile):
+                continue
+            print("processing", os.path.basename(item))
+            sys.stdout.flush()
+            results.append(pool.apply_async(write_amp_file, (item,),
+                                            dict(outdir=args.outdir)))
 
-    pool.close()
-    pool.join()
-    for res in results:
-        res.get()
+        pool.close()
+        pool.join()
+        for res in results:
+            res.get()
