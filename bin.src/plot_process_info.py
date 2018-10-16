@@ -18,8 +18,15 @@ t0 = None
 for pid in data:
     if t0 is None:
         t0 = data[pid].time[0]
-    plt.errorbar((np.array(data[pid].time) - t0)/60., data[pid].rss, fmt='-',
-                 label=str(pid))
+    plt.errorbar((np.array(data[pid].time) - t0)/60., data[pid].rss,
+                 fmt='-', label='RSS ' + str(pid))
+    try:
+        plt.errorbar((np.array(data[pid].time) - t0)/60., data[pid].uss,
+                     fmt=':', label='USS ' + str(pid))
+    except AttributeError:
+        ylabel = 'RSS memory (GB)'
+    else:
+        ylabel = 'RSS/USS memory (GB)'
 plt.xlabel('relative time (min)')
-plt.ylabel('RSS memory (GB)')
-plt.legend(loc=0, fontsize='x-small')
+plt.ylabel(ylabel)
+#plt.legend(loc=0, fontsize='x-small')

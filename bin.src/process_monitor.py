@@ -10,9 +10,11 @@ class RssHistory:
     def __init__(self):
         self.time = []
         self.rss = []
-    def append(self, time, rss):
+        self.uss = []
+    def append(self, time, mem_full_info):
         self.time.append(time)
-        self.rss.append(rss)
+        self.rss.append(mem_full_info.rss/1024.**3)
+        self.uss.append(mem_full_info.uss/1024.**3)
 
 if __name__ == '__main__':
     try:
@@ -33,8 +35,9 @@ if __name__ == '__main__':
         lines = lines.strip().split('\n')
         pids = sorted([int(line.split()[1]) for line in lines])
         for pid in pids:
+            #print(pid)
             proc = psutil.Process(pid)
             process_memories[pid].append(time.time(),
-                                         proc.memory_info().rss/1024.**3)
-        time.sleep(2.)
+                                         proc.memory_full_info())
+        time.sleep(2)
         pickle.dump(process_memories, open('process_info.pkl', 'wb'))
