@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import warnings
 from collections import namedtuple
 import numpy as np

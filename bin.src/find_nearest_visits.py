@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 For simulated visits, order visits by angular offset from a
 desired location, e.g., the center of the protoDC2 Run1.1 field, and
