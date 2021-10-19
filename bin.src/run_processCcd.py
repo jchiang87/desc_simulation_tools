@@ -46,6 +46,7 @@ def run_processCcd_pool(visits, repo, rerun, processes, logging_dir, calib):
                                                   detectorName, suffix))
                 calexp_path = os.path.join(repo, 'rerun', rerun, 'calexp',
                                            visit_dir, raftName, calexp_fn)
+                print(calexp_path)
                 if not os.path.isfile(calexp_path):
                     results.append(pool.apply_async(run_processCcd,
                                                     (visit, filt, raftName,
@@ -68,7 +69,7 @@ if __name__ == '__main__':
     rerun = config['rerun']
     calib = config['calib']
     logging_dir = config['logging_dir']
-    visits = [_.strip() for _ in config['visits'].split(',')]
+    visits = [int(_.strip()) for _ in config['visits'].split(',')]
     processes = int(config['processes'])
     print(config)
-    run_processCcd_pool(visits, repo, rerun, processes, logging_dir, calib):
+    run_processCcd_pool(visits, repo, rerun, processes, logging_dir, calib)
